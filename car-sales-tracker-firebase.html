@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Car Sales Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css" />
+<style>
+  :root {
+    --bg: #1a1d23;
+    --bg-card: #242830;
+    --bg-card-hover: #2a2f38;
+    --border: #383d47;
+    --text-primary: #e8e9ec;
+    --text-secondary: #9ca3af;
+    --text-tertiary: #6b7280;
+    --accent: #5b8def;
+    --green: #34d399;
+    --green-bg: rgba(52,211,153,0.15);
+    --amber: #fbbf24;
+    --amber-bg: rgba(251,191,36,0.15);
+    --red: #f87171;
+    --red-bg: rgba(248,113,113,0.15);
+    --gray-bg: rgba(156,163,175,0.15);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+  #app { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+  h1, h2, h3 { font-weight: 500; }
+  input, select {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  input::placeholder { color: var(--text-tertiary); }
+  button {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  button:hover { background: var(--bg-card-hover); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  tr:hover { background: var(--bg-card-hover); }
+  .c-green { background: var(--green-bg); color: var(--green); }
+  .c-amber { background: var(--amber-bg); color: var(--amber); }
+  .c-red { background: var(--red-bg); color: var(--red); }
+  .c-gray { background: var(--gray-bg); color: var(--text-secondary); }
+  .accentBtn { background: var(--accent); color: #fff; border-color: transparent; }
+  .accentBtn:hover { background: #4a7fe0; }
+  .dangerText { color: var(--red); }
+  #connStatus { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-tertiary); }
+  #connStatus .dot { width:8px; height:8px; border-radius:50%; background: var(--text-tertiary); }
+  #connStatus.connected .dot { background: var(--green); }
+  #connStatus.error .dot { background: var(--red); }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem; flex-wrap:wrap; gap:12px;">
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <h1 style="margin:0;">Car sales tracker</h1>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <label style="font-size:13px; color:var(--text-secondary);">Tax rate %</label>
+        <input type="number" id="taxRate" min="0" max="100" step="0.1" value="15" style="width:64px; text-align:right;" />
+      </div>
+    </div>
+    <div id="userArea" style="font-size:13px; color:var(--text-secondary);"></div>
+  </div>
+  <div id="connStatus" style="margin-bottom:1rem;"><span class="dot"></span><span id="connStatusText">Connecting...</span></div>
+
+  <div style="display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:1.25rem;">
+    <button id="tabSales" style="border:none; background:transparent; padding:8px 4px; margin-right:16px; font-size:14px; cursor:pointer; border-bottom:2px solid var(--text-primary); font-weight:500;">Sales</button>
+    <button id="tabCars" style="border:none; background:transparent; padding:8px 4px; font-size:14px; cursor:pointer; border-bottom:2px solid transparent; color:var(--text-secondary);">Cars</button>
+  </div>
+
+  <div id="salesPage">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:1.5rem;" id="metrics"></div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+      <h2 style="margin:0;">Sales</h2>
+      <button id="addSaleBtn" class="accentBtn" style="display:flex; align-items:center; gap:6px;"><i class="ti ti-plus" aria-hidden="true"></i>Add sale</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="min-width:940px;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Date</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Rego</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Make</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Model</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Buyer</th>
+            <th style="text-align:right; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Cost</th>
+            <th style="text-align:right; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Sold price</th>
+            <th style="text-align:right; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Tax</th>
+            <th style="text-align:right; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Profit</th>
+            <th style="text-align:center; padding:8px 6px; color:var(--text-secondary); font-weight:500;" title="Paperwork/file received">CIF</th>
+            <th style="text-align:center; padding:8px 6px; color:var(--text-secondary); font-weight:500;" title="Sale agreement signed">SA</th>
+            <th style="padding:8px 6px;"></th>
+          </tr>
+        </thead>
+        <tbody id="saleRows"></tbody>
+      </table>
+    </div>
+    <p id="salesEmpty" style="display:none; text-align:center; color:var(--text-secondary); padding:1.5rem 0;">No sales yet. Add one above.</p>
+  </div>
+
+  <div id="carsPage" style="display:none;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:1.5rem;" id="carMetrics"></div>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.75rem;">
+      <h2 style="margin:0;">Cars</h2>
+      <button id="addCarBtn" class="accentBtn" style="display:flex; align-items:center; gap:6px;"><i class="ti ti-plus" aria-hidden="true"></i>Add car</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="min-width:860px;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Rego</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Make</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Model</th>
+            <th style="text-align:right; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Cost</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Rego expiry</th>
+            <th style="text-align:left; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Warrant end date</th>
+            <th style="text-align:right; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Expenses</th>
+            <th style="text-align:center; padding:8px 6px; color:var(--text-secondary); font-weight:500;">Sold</th>
+            <th style="padding:8px 6px;"></th>
+          </tr>
+        </thead>
+        <tbody id="carRows"></tbody>
+      </table>
+    </div>
+    <p id="carsEmpty" style="display:none; text-align:center; color:var(--text-secondary); padding:1.5rem 0;">No cars yet. Add one above.</p>
+  </div>
+
+  <p style="font-size:12px; color:var(--text-tertiary); margin-top:1.5rem;"><i class="ti ti-cloud" aria-hidden="true" style="font-size:14px; vertical-align:-2px; margin-right:4px;"></i>Data is stored in the cloud (Firebase) and shared live with everyone using this file. Login is name+password based for accountability, not strong security.</p>
+</div>
+
+<div id="modalRoot"></div>
+
+<!-- Firebase SDKs (loaded as ES modules) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, setDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAjiwMuOXVmJulh8zQjfZlwiiO7zy3N1rI",
+    authDomain: "turners-car-7ccdd.firebaseapp.com",
+    projectId: "turners-car-7ccdd",
+    storageBucket: "turners-car-7ccdd.firebasestorage.app",
+    messagingSenderId: "929200136121",
+    appId: "1:929200136121:web:732e7e19678d7932f4a068"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const db = getFirestore(fbApp);
+
+  // Single shared document holding the whole app's data.
+  // Collection "tracker", document "shared-data".
+  const DOC_REF = doc(db, "tracker", "shared-data");
+
+  // Expose minimal API to the rest of the (non-module) app code via window.
+  window.__fb = {
+    async getData(){
+      const snap = await getDoc(DOC_REF);
+      return snap.exists() ? snap.data() : null;
+    },
+    async setData(data){
+      await setDoc(DOC_REF, data, { merge: true });
+    },
+    listen(callback){
+      return onSnapshot(DOC_REF, (snap)=>{
+        callback(snap.exists() ? snap.data() : null);
+      }, (err)=>{
+        console.error("Firestore listen error", err);
+        window.__fbError && window.__fbError(err);
+      });
+    }
+  };
+  window.__fbReady && window.__fbReady();
+</script>
+
+<script>
+(function(){
+  const fmt = n => '$' + Number(n||0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+  let cars = [];
+  let sales = [];
+  let taxRate = 15;
+  let users = {};
+  let currentUser = null;
+  let fbConnected = false;
+  let suppressNextSnapshot = false; // avoid re-render loops right after our own writes
+
+  function setConnStatus(state, text){
+    const el = document.getElementById('connStatus');
+    el.className = state;
+    document.getElementById('connStatusText').textContent = text;
+  }
+
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function escapeHtml(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+  function newId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+  function carLabel(c){ return [c.make,c.model].filter(Boolean).join(' ') || ''; }
+  function isSold(s){ return Number(s.soldPrice||0) > 0; }
+
+  function setupBackdropClose(modal, panelSelector){
+    let downOnBackdrop = false;
+    const panel = modal.querySelector(panelSelector);
+    modal.addEventListener('mousedown', (e)=>{ downOnBackdrop = !panel.contains(e.target); });
+    modal.addEventListener('mouseup', (e)=>{
+      const upOnBackdrop = !panel.contains(e.target);
+      if (downOnBackdrop && upOnBackdrop) modal.remove();
+      downOnBackdrop = false;
+    });
+  }
+
+  function expiryStatus(dateStr){
+    if (!dateStr) return {label:'Unknown', cls:'c-gray'};
+    const exp = new Date(dateStr);
+    const today = new Date(todayStr());
+    const diffDays = Math.ceil((exp-today)/86400000);
+    if (diffDays < 0) return {label:'Expired', cls:'c-red'};
+    if (diffDays <= 30) return {label:'Expiring soon', cls:'c-amber'};
+    return {label:'Valid', cls:'c-green'};
+  }
+
+  function carExpenseTotal(c){ return (c.expenses||[]).reduce((s,e)=>s+Number(e.amount||0),0); }
+  function carIsSold(rego){ return sales.some(s=>s.rego===rego && isSold(s)); }
+
+  async function hash(str){
+    const enc = new TextEncoder().encode(str);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  // ---- Cloud persistence via Firebase (with localStorage fallback/cache) ----
+  const LOCAL_CACHE_KEY = 'car-sales-cloud:cache';
+
+  function applyData(data){
+    if (!data) return;
+    cars = data.cars || [];
+    sales = data.sales || [];
+    taxRate = data.taxRate !== undefined ? data.taxRate : 15;
+    users = data.users || {};
+    cars.forEach(c=>{
+      if(!c.expenses) c.expenses=[];
+      if(c.regoExpiry===undefined) c.regoExpiry='';
+      if(c.cost===undefined) c.cost = c.cost||0;
+    });
+    sales.forEach(s=>{
+      if(s.soldPrice===undefined) s.soldPrice = s.price||0;
+      if(s.cif===undefined) s.cif=false;
+      if(s.sa===undefined) s.sa=false;
+      if(s.cifImage===undefined) s.cifImage='';
+      if(s.saImage===undefined) s.saImage='';
+    });
+    document.getElementById('taxRate').value = taxRate;
+  }
+
+  function snapshot(){
+    return { cars, sales, taxRate, users };
+  }
+
+  async function persist(){
+    const data = snapshot();
+    try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(data)); } catch(e){}
+    if (window.__fb && fbConnected){
+      try {
+        suppressNextSnapshot = true;
+        await window.__fb.setData(data);
+      } catch(e){
+        console.error('Cloud save failed', e);
+        setConnStatus('error', 'Save failed — check connection');
+      }
+    }
+  }
+
+  function loadLocalCache(){
+    try {
+      const v = localStorage.getItem(LOCAL_CACHE_KEY);
+      if (v) applyData(JSON.parse(v));
+    } catch(e){}
+  }
+
+  function initCloud(){
+    window.__fbError = (err)=>{
+      setConnStatus('error', 'Cloud connection error');
+    };
+    window.__fbReady = async ()=>{
+      try {
+        const data = await window.__fb.getData();
+        if (data){
+          applyData(data);
+        } else {
+          // first run: seed the cloud doc with whatever we have (likely empty)
+          await window.__fb.setData(snapshot());
+        }
+        fbConnected = true;
+        setConnStatus('connected', 'Synced — shared live with everyone');
+        renderUserArea();
+        render();
+
+        window.__fb.listen((data)=>{
+          if (suppressNextSnapshot){ suppressNextSnapshot = false; return; }
+          if (data){
+            applyData(data);
+            renderUserArea();
+            render();
+          }
+        });
+      } catch(e){
+        console.error(e);
+        setConnStatus('error', 'Could not connect to cloud — using local data only');
+      }
+    };
+    // If the module script already ran before this point, call manually
+    if (window.__fb) window.__fbReady();
+  }
+
+  function load(){
+    loadLocalCache();
+    document.getElementById('taxRate').value = taxRate;
+    renderUserArea();
+    render();
+    setConnStatus('', 'Connecting...');
+    initCloud();
+  }
+
+  function renderUserArea(){
+    const el = document.getElementById('userArea');
+    if (currentUser){
+      el.innerHTML = `Signed in as <strong style="font-weight:500; color:var(--text-primary);">${escapeHtml(currentUser)}</strong> <button id="logoutBtn" style="margin-left:6px; padding:4px 10px; font-size:12px;">Log out</button>`;
+      document.getElementById('logoutBtn').addEventListener('click', ()=>{ currentUser=null; renderUserArea(); });
+    } else {
+      el.innerHTML = `<button id="loginBtn" style="display:flex; align-items:center; gap:6px;"><i class="ti ti-lock" aria-hidden="true"></i>Sign in</button>`;
+      document.getElementById('loginBtn').addEventListener('click', openLoginModal);
+    }
+  }
+
+  function openLoginModal(){
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:30;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:360px; color:var(--text-primary);">
+        <h2 style="margin:0 0 1rem;">Sign in</h2>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <label style="font-size:13px; color:var(--text-secondary);">Name
+            <input type="text" id="li_name" style="width:100%; margin-top:4px;" placeholder="Your name" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Password
+            <input type="password" id="li_pass" style="width:100%; margin-top:4px;" />
+          </label>
+          <p id="li_err" style="font-size:13px; color:var(--red); margin:0; display:none;"></p>
+          <p style="font-size:12px; color:var(--text-tertiary); margin:0;">New name? An account is created automatically with the password you enter.</p>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          <button id="li_cancel">Cancel</button>
+          <button id="li_submit" class="accentBtn">Sign in</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#li_cancel').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#li_submit').addEventListener('click', async ()=>{
+      const name = modal.querySelector('#li_name').value.trim();
+      const pass = modal.querySelector('#li_pass').value;
+      const errEl = modal.querySelector('#li_err');
+      if (!name || !pass){ errEl.textContent='Enter a name and password.'; errEl.style.display='block'; return; }
+      const key = name.toLowerCase();
+      const pHash = await hash(pass);
+      if (users[key]){
+        if (users[key].hash !== pHash){ errEl.textContent='Incorrect password for this name.'; errEl.style.display='block'; return; }
+      } else {
+        users[key] = {name, hash: pHash};
+        persist();
+      }
+      currentUser = users[key].name;
+      renderUserArea();
+      modal.remove();
+    });
+  }
+
+  function requireLogin(){
+    if (!currentUser){ openLoginModal(); return false; }
+    return true;
+  }
+
+  function metrics(){
+    const count = sales.length;
+    const soldSales = sales.filter(s=>isSold(s));
+    const revenue = soldSales.reduce((s,x)=>s+Number(x.soldPrice||0),0);
+    const taxTotal = soldSales.reduce((s,x)=>s+Number(x.tax||0),0);
+    const profit = soldSales.reduce((s,x)=>{
+      const car = carByRego(x.rego);
+      const cost = car? Number(car.cost||0) : 0;
+      return s + (Number(x.soldPrice||0) - cost - Number(x.tax||0));
+    },0);
+    return {count, revenue, taxTotal, profit};
+  }
+
+  function renderMetrics(){
+    const m = metrics();
+    const cardsData = [['Total sales', m.count],['Revenue', fmt(m.revenue)],['Tax owing', fmt(m.taxTotal)],['Net profit', fmt(m.profit)]];
+    document.getElementById('metrics').innerHTML = cardsData.map(([label,val])=>`
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:1rem;">
+        <p style="font-size:13px; color:var(--text-secondary); margin:0 0 4px;">${label}</p>
+        <p style="font-size:24px; font-weight:500; margin:0;">${val}</p>
+      </div>`).join('');
+  }
+
+  function carMetrics(){
+    const onHand = cars.filter(c=>!carIsSold(c.rego));
+    const onHandCount = onHand.length;
+    const onHandCost = onHand.reduce((s,c)=>s+Number(c.cost||0),0);
+    const potentialProfit = onHandCost*0.2;
+    const soldCount = cars.filter(c=>carIsSold(c.rego)).length;
+    return {onHandCount, onHandCost, potentialProfit, soldCount};
+  }
+
+  function renderCarMetrics(){
+    const m = carMetrics();
+    const cardsData = [
+      ['On-hand cars', m.onHandCount],
+      ['Total cost (on hand)', fmt(m.onHandCost)],
+      ['Potential profit (+20%)', fmt(m.potentialProfit)],
+      ['Cars sold', m.soldCount]
+    ];
+    document.getElementById('carMetrics').innerHTML = cardsData.map(([label,val])=>`
+      <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:1rem;">
+        <p style="font-size:13px; color:var(--text-secondary); margin:0 0 4px;">${label}</p>
+        <p style="font-size:24px; font-weight:500; margin:0;">${val}</p>
+      </div>`).join('');
+  }
+
+  function carByRego(rego){ return cars.find(c=>c.rego===rego); }
+
+  function badge(dateStr){
+    const st = expiryStatus(dateStr);
+    return `<span class="${st.cls}" style="display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px;">${st.label}</span>`;
+  }
+
+  function renderCarRows(){
+    const tbody = document.getElementById('carRows');
+    const empty = document.getElementById('carsEmpty');
+    if (!cars.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display='none';
+    const sorted = [...cars].sort((a,b)=>(a.rego||'').localeCompare(b.rego||''));
+    tbody.innerHTML = sorted.map(c=>{
+      const sold = carIsSold(c.rego);
+      return `<tr style="border-bottom:1px solid var(--border); cursor:pointer;" data-rego="${escapeHtml(c.rego)}" class="carRow">
+        <td style="padding:8px 6px; font-weight:500;">${escapeHtml(c.rego)}</td>
+        <td style="padding:8px 6px;">${escapeHtml(c.make||'')}</td>
+        <td style="padding:8px 6px;">${escapeHtml(c.model||'')}</td>
+        <td style="padding:8px 6px; text-align:right;">${fmt(c.cost)}</td>
+        <td style="padding:8px 6px;">
+          <div>${c.regoExpiry||'—'}</div>
+          <div style="margin-top:2px;">${badge(c.regoExpiry)}</div>
+        </td>
+        <td style="padding:8px 6px;">
+          <div>${c.warrantExpiry||'—'}</div>
+          <div style="margin-top:2px;">${badge(c.warrantExpiry)}</div>
+        </td>
+        <td style="padding:8px 6px; text-align:right;">${fmt(carExpenseTotal(c))}</td>
+        <td style="padding:8px 6px; text-align:center;">${sold ? '<span class="c-green" style="display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px;">Sold</span>' : '<span class="c-gray" style="display:inline-block; padding:2px 8px; border-radius:6px; font-size:12px;">On hand</span>'}</td>
+        <td style="padding:8px 6px; text-align:right;"><i class="ti ti-chevron-right" aria-hidden="true" style="font-size:16px; color:var(--text-tertiary);"></i></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderSaleRows(){
+    const tbody = document.getElementById('saleRows');
+    const empty = document.getElementById('salesEmpty');
+    if (!sales.length){ tbody.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display='none';
+    const sorted = [...sales].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    tbody.innerHTML = sorted.map(s=>{
+      const car = carByRego(s.rego);
+      const cost = car? Number(car.cost||0) : 0;
+      const sold = isSold(s);
+      const profit = sold ? (Number(s.soldPrice||0) - cost - Number(s.tax||0)) : null;
+      return `<tr style="border-bottom:1px solid var(--border);" data-id="${s.id}">
+        <td style="padding:8px 6px;">${s.date||''}</td>
+        <td style="padding:8px 6px; font-weight:500; cursor:${car?'pointer':'default'}; ${car?'color:var(--accent);':''}" class="${car?'saleRegoLink':''}" data-rego="${escapeHtml(s.rego)}">${escapeHtml(s.rego||'')}</td>
+        <td style="padding:8px 6px;">${escapeHtml(car?(car.make||''):'')}</td>
+        <td style="padding:8px 6px;">${escapeHtml(car?(car.model||''):'')}</td>
+        <td style="padding:8px 6px;">${escapeHtml(s.buyer||'')}</td>
+        <td style="padding:8px 6px; text-align:right;">${fmt(cost)}</td>
+        <td style="padding:8px 6px; text-align:right;"><input type="number" class="soldPriceInput" data-id="${s.id}" value="${s.soldPrice||0}" min="0" step="0.01" style="width:90px; text-align:right;" /></td>
+        <td style="padding:8px 6px; text-align:right; color:var(--accent);">${fmt(s.tax)}</td>
+        <td style="padding:8px 6px; text-align:right; ${profit!==null?('color:'+(profit>=0?'var(--green)':'var(--red)')):''}">${profit!==null?fmt(profit):'—'}</td>
+        <td style="padding:8px 6px; text-align:center;">
+          <div class="cifCell" data-id="${s.id}" style="display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer;">
+            <input type="checkbox" class="cifCheck" data-id="${s.id}" ${s.cif?'checked':''} />
+            ${s.cifImage?'<i class="ti ti-photo" aria-hidden="true" style="font-size:13px; color:var(--accent);"></i>':''}
+          </div>
+        </td>
+        <td style="padding:8px 6px; text-align:center;">
+          <div class="saCell" data-id="${s.id}" style="display:flex; flex-direction:column; align-items:center; gap:2px; cursor:pointer;">
+            <input type="checkbox" class="saCheck" data-id="${s.id}" ${s.sa?'checked':''} />
+            ${s.saImage?'<i class="ti ti-photo" aria-hidden="true" style="font-size:13px; color:var(--accent);"></i>':''}
+          </div>
+        </td>
+        <td style="padding:8px 6px; text-align:right; white-space:nowrap;">
+          <button class="editSaleBtn" data-id="${s.id}" style="border:none; background:transparent; padding:4px; cursor:pointer;" aria-label="Edit"><i class="ti ti-edit" aria-hidden="true" style="font-size:16px;"></i></button>
+          <button class="delSaleBtn" data-id="${s.id}" style="border:none; background:transparent; padding:4px; cursor:pointer;" aria-label="Delete"><i class="ti ti-trash" aria-hidden="true" style="font-size:16px;"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function render(){ renderMetrics(); renderCarMetrics(); renderCarRows(); renderSaleRows(); }
+
+  function switchTab(tab){
+    const salesPage = document.getElementById('salesPage');
+    const carsPage = document.getElementById('carsPage');
+    const tabSales = document.getElementById('tabSales');
+    const tabCars = document.getElementById('tabCars');
+    if (tab==='cars'){
+      salesPage.style.display='none'; carsPage.style.display='block';
+      tabCars.style.borderBottom='2px solid var(--text-primary)'; tabCars.style.color='var(--text-primary)'; tabCars.style.fontWeight='500';
+      tabSales.style.borderBottom='2px solid transparent'; tabSales.style.color='var(--text-secondary)'; tabSales.style.fontWeight='400';
+    } else {
+      salesPage.style.display='block'; carsPage.style.display='none';
+      tabSales.style.borderBottom='2px solid var(--text-primary)'; tabSales.style.color='var(--text-primary)'; tabSales.style.fontWeight='500';
+      tabCars.style.borderBottom='2px solid transparent'; tabCars.style.color='var(--text-secondary)'; tabCars.style.fontWeight='400';
+    }
+  }
+  document.getElementById('tabSales').addEventListener('click', ()=>switchTab('sales'));
+  document.getElementById('tabCars').addEventListener('click', ()=>switchTab('cars'));
+
+  function openCarDetailModal(rego){
+    const c = carByRego(rego);
+    if (!c) return;
+    const expenses = c.expenses||[];
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:10; overflow-y:auto;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:440px; margin:auto; color:var(--text-primary);">
+        <h2 style="margin:0 0 1rem;">${escapeHtml(carLabel(c))}</h2>
+        <table style="margin-bottom:1rem;">
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Registration</td><td style="text-align:right; padding:6px 0; font-weight:500;">${escapeHtml(c.rego)}</td></tr>
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Make</td><td style="text-align:right; padding:6px 0;">${escapeHtml(c.make||'—')}</td></tr>
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Model</td><td style="text-align:right; padding:6px 0;">${escapeHtml(c.model||'—')}</td></tr>
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Cost</td><td style="text-align:right; padding:6px 0; font-weight:500;">${fmt(c.cost)}</td></tr>
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Date bought</td><td style="text-align:right; padding:6px 0;">${c.regoDate||'—'}</td></tr>
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Rego expiry</td><td style="text-align:right; padding:6px 0;">${c.regoExpiry||'—'} ${badge(c.regoExpiry)}</td></tr>
+          <tr><td style="color:var(--text-secondary); padding:6px 0;">Warrant end date</td><td style="text-align:right; padding:6px 0;">${c.warrantExpiry||'—'} ${badge(c.warrantExpiry)}</td></tr>
+        </table>
+
+        <div style="border-top:1px solid var(--border); padding-top:12px; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <h3 style="margin:0;">Expenses</h3>
+            <button id="addExpBtn" style="display:flex; align-items:center; gap:4px; padding:4px 10px; font-size:12px;"><i class="ti ti-plus" aria-hidden="true" style="font-size:14px;"></i>Add</button>
+          </div>
+          <div id="expList" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;">
+            ${expenses.length? expenses.map(e=>`
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:6px 0; border-bottom:1px solid var(--border);">
+                <div>
+                  <div>${escapeHtml(e.label||'Expense')}</div>
+                  <div style="font-size:11px; color:var(--text-tertiary);">${e.date||''}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span>${fmt(e.amount)}</span>
+                  <button class="delExpBtn" data-id="${e.id}" style="border:none; background:transparent; padding:2px; cursor:pointer;" aria-label="Delete expense"><i class="ti ti-trash" aria-hidden="true" style="font-size:14px;"></i></button>
+                </div>
+              </div>`).join('') : '<p style="font-size:13px; color:var(--text-secondary); margin:4px 0;">No expenses added.</p>'}
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:500; margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
+            <span>Total expenses</span>
+            <span>${fmt(carExpenseTotal(c))}</span>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          <button id="cd_delete" class="dangerText">Delete car</button>
+          <button id="cd_edit">Edit</button>
+          <button id="cd_close" class="accentBtn">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#cd_close').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#cd_edit').addEventListener('click', ()=>{
+      if (!requireLogin()) return;
+      modal.remove();
+      openCarFormModal(c);
+    });
+    modal.querySelector('#cd_delete').addEventListener('click', ()=>{
+      if (!requireLogin()) return;
+      cars = cars.filter(x=>x.rego!==c.rego);
+      persist();
+      render();
+      modal.remove();
+    });
+    modal.querySelector('#addExpBtn').addEventListener('click', ()=>{
+      if (!requireLogin()) return;
+      openExpenseFormModal(c, modal);
+    });
+    modal.querySelectorAll('.delExpBtn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if (!requireLogin()) return;
+        const car = carByRego(c.rego);
+        car.expenses = (car.expenses||[]).filter(x=>x.id!==btn.dataset.id);
+        persist();
+        render();
+        modal.remove();
+        openCarDetailModal(c.rego);
+      });
+    });
+  }
+
+  function openExpenseFormModal(car, parentModal){
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.65); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:20;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:360px; color:var(--text-primary);">
+        <h2 style="margin:0 0 1rem;">Add expense</h2>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <label style="font-size:13px; color:var(--text-secondary);">Description
+            <input type="text" id="ef_label" placeholder="e.g. New tyres" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Date
+            <input type="date" id="ef_date" value="${todayStr()}" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Amount
+            <input type="number" id="ef_amount" min="0" step="0.01" value="0" style="width:100%; margin-top:4px;" />
+          </label>
+          <p id="ef_err" style="font-size:13px; color:var(--red); margin:0; display:none;"></p>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          <button id="ef_cancel">Cancel</button>
+          <button id="ef_save" class="accentBtn">Add</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#ef_cancel').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#ef_save').addEventListener('click', ()=>{
+      const label = modal.querySelector('#ef_label').value.trim();
+      const date = modal.querySelector('#ef_date').value;
+      const amount = parseFloat(modal.querySelector('#ef_amount').value)||0;
+      const errEl = modal.querySelector('#ef_err');
+      if (!label){ errEl.textContent='Enter a description.'; errEl.style.display='block'; return; }
+      const liveCar = carByRego(car.rego);
+      if (!liveCar.expenses) liveCar.expenses=[];
+      liveCar.expenses.push({id:newId(), label, date, amount, addedBy:currentUser});
+      persist();
+      render();
+      modal.remove();
+      if (parentModal) parentModal.remove();
+      openCarDetailModal(car.rego);
+    });
+  }
+
+  function openCarFormModal(existing){
+    const isEdit = !!existing;
+    const c = existing || {rego:'', make:'', model:'', cost:0, regoDate:todayStr(), regoExpiry:'', warrantExpiry:''};
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:10; overflow-y:auto;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:420px; margin:auto; color:var(--text-primary);">
+        <h2 style="margin:0 0 1rem;">${isEdit?'Edit car':'Add car'}</h2>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <label style="font-size:13px; color:var(--text-secondary);">Registration number
+            <input type="text" id="cf_rego" value="${escapeHtml(c.rego)}" placeholder="e.g. ABC123" style="width:100%; margin-top:4px; text-transform:uppercase;" ${isEdit?'disabled':''} />
+          </label>
+          <div style="display:flex; gap:12px;">
+            <label style="font-size:13px; color:var(--text-secondary); flex:1;">Make
+              <input type="text" id="cf_make" value="${escapeHtml(c.make||'')}" placeholder="e.g. Toyota" style="width:100%; margin-top:4px;" />
+            </label>
+            <label style="font-size:13px; color:var(--text-secondary); flex:1;">Model
+              <input type="text" id="cf_model" value="${escapeHtml(c.model||'')}" placeholder="e.g. Corolla" style="width:100%; margin-top:4px;" />
+            </label>
+          </div>
+          <label style="font-size:13px; color:var(--text-secondary);">Cost (what you paid)
+            <input type="number" id="cf_cost" value="${c.cost||0}" min="0" step="0.01" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Date bought (rego)
+            <input type="date" id="cf_regoDate" value="${c.regoDate}" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Rego expiry date
+            <input type="date" id="cf_regoExpiry" value="${c.regoExpiry||''}" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Warrant (WOF) end date
+            <input type="date" id="cf_warrant" value="${c.warrantExpiry}" style="width:100%; margin-top:4px;" />
+          </label>
+          <p id="cf_err" style="font-size:13px; color:var(--red); margin:0; display:none;"></p>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          <button id="cf_cancel">Cancel</button>
+          <button id="cf_save" class="accentBtn">${isEdit?'Save':'Add'}</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#cf_cancel').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#cf_save').addEventListener('click', ()=>{
+      const rego = modal.querySelector('#cf_rego').value.trim().toUpperCase();
+      const make = modal.querySelector('#cf_make').value.trim();
+      const model = modal.querySelector('#cf_model').value.trim();
+      const cost = parseFloat(modal.querySelector('#cf_cost').value)||0;
+      const regoDate = modal.querySelector('#cf_regoDate').value;
+      const regoExpiry = modal.querySelector('#cf_regoExpiry').value;
+      const warrantExpiry = modal.querySelector('#cf_warrant').value;
+      const errEl = modal.querySelector('#cf_err');
+      if (!rego || !make){ errEl.textContent='Registration number and make are required.'; errEl.style.display='block'; return; }
+      if (!isEdit && carByRego(rego)){ errEl.textContent='A car with this registration already exists.'; errEl.style.display='block'; return; }
+
+      if (isEdit){
+        const idx = cars.findIndex(x=>x.rego===c.rego);
+        if (idx>-1) cars[idx] = {...cars[idx], make, model, cost, regoDate, regoExpiry, warrantExpiry, editedBy: currentUser};
+      } else {
+        cars.push({rego, make, model, cost, regoDate, regoExpiry, warrantExpiry, expenses:[], addedBy: currentUser});
+      }
+      persist();
+      render();
+      modal.remove();
+    });
+  }
+
+  function openConfirmModal(message, onConfirm){
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:40;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:360px; color:var(--text-primary);">
+        <p style="margin:0 0 1.25rem; font-size:14px;">${message}</p>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button id="cm_cancel">Go back</button>
+          <button id="cm_confirm" class="accentBtn">Continue</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#cm_cancel').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#cm_confirm').addEventListener('click', ()=>{
+      modal.remove();
+      onConfirm();
+    });
+  }
+
+  function openSaleFormModal(existing){
+    const isEdit = !!existing;
+    const s = existing || {id:'', date:todayStr(), rego:'', buyer:'', soldPrice:0, cif:false, sa:false};
+    if (!cars.length){
+      const modal = document.createElement('div');
+      modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:10;';
+      modal.innerHTML = `<div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:360px; color:var(--text-primary);">
+        <p style="margin:0 0 1rem;">Add a car first before recording a sale.</p>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button id="goCars">Go to cars</button>
+          <button id="ok">OK</button>
+        </div>
+      </div>`;
+      document.getElementById('modalRoot').appendChild(modal);
+      setupBackdropClose(modal, '.modalPanel');
+      modal.querySelector('#ok').addEventListener('click', ()=>modal.remove());
+      modal.querySelector('#goCars').addEventListener('click', ()=>{ modal.remove(); switchTab('cars'); });
+      return;
+    }
+    const carOptions = cars.map(c=>`<option value="${escapeHtml(c.rego)}" ${s.rego===c.rego?'selected':''}>${escapeHtml(c.rego)} — ${escapeHtml(carLabel(c))}</option>`).join('');
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:10; overflow-y:auto;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:420px; margin:auto; color:var(--text-primary);">
+        <h2 style="margin:0 0 1rem;">${isEdit?'Edit sale':'Add sale'}</h2>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <label style="font-size:13px; color:var(--text-secondary);">Car
+            <select id="sf_rego" style="width:100%; margin-top:4px;">${carOptions}</select>
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Date
+            <input type="date" id="sf_date" value="${s.date}" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Buyer
+            <input type="text" id="sf_buyer" value="${escapeHtml(s.buyer)}" placeholder="Customer name" style="width:100%; margin-top:4px;" />
+          </label>
+          <label style="font-size:13px; color:var(--text-secondary);">Sold price
+            <input type="number" id="sf_soldPrice" value="${s.soldPrice||0}" min="0" step="0.01" style="width:100%; margin-top:4px;" />
+          </label>
+          <p style="font-size:12px; color:var(--text-tertiary); margin:0;">Tax owing (at ${taxRate}%): <span id="sf_taxPreview" style="font-weight:500; color:var(--text-primary);">${fmt((s.soldPrice||0)*taxRate/100)}</span></p>
+          <div style="display:flex; gap:16px; padding-top:4px;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary);" title="Paperwork/file received">
+              <input type="checkbox" id="sf_cif" ${s.cif?'checked':''} />
+              CIF
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary);" title="Sale agreement signed">
+              <input type="checkbox" id="sf_sa" ${s.sa?'checked':''} />
+              SA
+            </label>
+          </div>
+          <p id="sf_err" style="font-size:13px; color:var(--red); margin:0; display:none;"></p>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          <button id="sf_cancel">Cancel</button>
+          <button id="sf_save" class="accentBtn">${isEdit?'Save':'Add'}</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+
+    const soldPriceInput = modal.querySelector('#sf_soldPrice');
+    const taxPreview = modal.querySelector('#sf_taxPreview');
+    soldPriceInput.addEventListener('input', ()=>{ taxPreview.textContent = fmt((parseFloat(soldPriceInput.value)||0)*taxRate/100); });
+
+    modal.querySelector('#sf_cancel').addEventListener('click', ()=>modal.remove());
+
+    function doSave(){
+      const rego = modal.querySelector('#sf_rego').value;
+      const date = modal.querySelector('#sf_date').value;
+      const buyer = modal.querySelector('#sf_buyer').value.trim();
+      const soldPrice = parseFloat(soldPriceInput.value)||0;
+      const tax = Math.round(soldPrice*taxRate/100*100)/100;
+      const cif = modal.querySelector('#sf_cif').checked;
+      const sa = modal.querySelector('#sf_sa').checked;
+
+      if (isEdit){
+        const idx = sales.findIndex(x=>x.id===s.id);
+        if (idx>-1) sales[idx] = {...sales[idx], rego, date, buyer, soldPrice, tax, cif, sa, editedBy: currentUser};
+      } else {
+        sales.push({id: newId(), rego, date, buyer, soldPrice, tax, cif, sa, cifImage:'', saImage:'', addedBy: currentUser});
+      }
+      persist();
+      render();
+      modal.remove();
+    }
+
+    modal.querySelector('#sf_save').addEventListener('click', ()=>{
+      const cif = modal.querySelector('#sf_cif').checked;
+      const sa = modal.querySelector('#sf_sa').checked;
+      if (!cif || !sa){
+        const missing = [!cif?'CIF':null, !sa?'SA':null].filter(Boolean).join(' and ');
+        openConfirmModal(`${missing} ${missing.includes('and')?'are':'is'} not ticked. Are you sure you want to continue?`, doSave);
+      } else {
+        doSave();
+      }
+    });
+  }
+
+  function openImageModal(saleId, field){
+    const s = sales.find(x=>x.id===saleId);
+    if (!s) return;
+    const existingImg = s[field];
+    const title = field==='cifImage' ? 'CIF photo' : 'SA photo';
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.65); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:20;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:380px; color:var(--text-primary);">
+        <h2 style="margin:0 0 1rem;">${title}</h2>
+        <div id="imgPreviewWrap" style="margin-bottom:12px;">
+          ${existingImg ? `<img src="${existingImg}" style="width:100%; border-radius:8px; max-height:240px; object-fit:contain; background:var(--bg);" />` : '<p style="font-size:13px; color:var(--text-secondary);">No photo uploaded yet.</p>'}
+        </div>
+        <input type="file" id="imgFile" accept="image/*" style="width:100%; font-size:13px;" />
+        <p id="img_err" style="font-size:13px; color:var(--red); margin:8px 0 0; display:none;"></p>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          ${existingImg ? '<button id="img_remove" class="dangerText">Remove</button>' : ''}
+          <button id="img_close">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#img_close').addEventListener('click', ()=>{ modal.remove(); render(); });
+
+    modal.querySelector('#imgFile').addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 700*1024){
+        modal.querySelector('#img_err').textContent = 'Image too large (max ~700KB — Firestore documents have a 1MB total size limit).';
+        modal.querySelector('#img_err').style.display='block';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const live = sales.find(x=>x.id===saleId);
+        live[field] = reader.result;
+        persist();
+        modal.querySelector('#imgPreviewWrap').innerHTML = `<img src="${reader.result}" style="width:100%; border-radius:8px; max-height:240px; object-fit:contain; background:var(--bg);" />`;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    const removeBtn = modal.querySelector('#img_remove');
+    if (removeBtn){
+      removeBtn.addEventListener('click', ()=>{
+        const live = sales.find(x=>x.id===saleId);
+        live[field]='';
+        persist();
+        modal.remove();
+        render();
+      });
+    }
+  }
+
+  document.getElementById('addCarBtn').addEventListener('click', ()=>{ if(requireLogin()) openCarFormModal(null); });
+  document.getElementById('addSaleBtn').addEventListener('click', ()=>{ if(requireLogin()) openSaleFormModal(null); });
+
+  document.getElementById('carRows').addEventListener('click', (e)=>{
+    const row = e.target.closest('.carRow');
+    if (row) openCarDetailModal(row.dataset.rego);
+  });
+
+  document.getElementById('saleRows').addEventListener('click', (e)=>{
+    const regoLink = e.target.closest('.saleRegoLink');
+    const editBtn = e.target.closest('.editSaleBtn');
+    const delBtn = e.target.closest('.delSaleBtn');
+    const cifCell = e.target.closest('.cifCell');
+    const saCell = e.target.closest('.saCell');
+
+    if (regoLink){
+      openCarDetailModal(regoLink.dataset.rego);
+    } else if (editBtn){
+      if (!requireLogin()) return;
+      const s = sales.find(x=>x.id===editBtn.dataset.id);
+      if (s) openSaleFormModal(s);
+    } else if (delBtn){
+      if (!requireLogin()) return;
+      sales = sales.filter(x=>x.id!==delBtn.dataset.id);
+      persist();
+      render();
+    } else if (cifCell && !e.target.classList.contains('cifCheck')){
+      if (!requireLogin()) return;
+      openImageModal(cifCell.dataset.id, 'cifImage');
+    } else if (saCell && !e.target.classList.contains('saCheck')){
+      if (!requireLogin()) return;
+      openImageModal(saCell.dataset.id, 'saImage');
+    }
+  });
+
+  document.getElementById('saleRows').addEventListener('change', (e)=>{
+    const cifCheck = e.target.closest('.cifCheck');
+    const saCheck = e.target.closest('.saCheck');
+    const soldPriceInput = e.target.closest('.soldPriceInput');
+
+    if (cifCheck){
+      if (!requireLogin()){ e.target.checked = !e.target.checked; return; }
+      const s = sales.find(x=>x.id===cifCheck.dataset.id);
+      s.cif = cifCheck.checked;
+      persist();
+    } else if (saCheck){
+      if (!requireLogin()){ e.target.checked = !e.target.checked; return; }
+      const s = sales.find(x=>x.id===saCheck.dataset.id);
+      s.sa = saCheck.checked;
+      persist();
+    } else if (soldPriceInput){
+      if (!requireLogin()) return;
+      const s = sales.find(x=>x.id===soldPriceInput.dataset.id);
+      s.soldPrice = parseFloat(soldPriceInput.value)||0;
+      s.tax = Math.round(s.soldPrice*taxRate/100*100)/100;
+      persist();
+      render();
+    }
+  });
+
+  const taxRateInput = document.getElementById('taxRate');
+  let rateTimer;
+  taxRateInput.addEventListener('input', ()=>{
+    taxRate = parseFloat(taxRateInput.value)||0;
+    clearTimeout(rateTimer);
+    rateTimer = setTimeout(()=>{ persist(); render(); }, 400);
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
