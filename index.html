@@ -370,6 +370,7 @@
   }
 
   function showApp(){
+    document.getElementById('modalRoot').innerHTML = '';
     const shell = document.getElementById('shell');
     if (shell) shell.style.display = 'flex';
     renderUserArea();
