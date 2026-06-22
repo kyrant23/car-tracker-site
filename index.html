@@ -412,38 +412,46 @@
     }
   }
 
+  let routingInProgress = false;
+
+  async function routeAuthenticatedUser(user){
+    currentUser = user;
+    if (!user){
+      if (workspaceUnsub){ workspaceUnsub(); workspaceUnsub = null; }
+      currentTeamCode = null;
+      showGate();
+      return;
+    }
+    if (!user.emailVerified){
+      showGate('verify');
+      return;
+    }
+    if (routingInProgress) return; // avoid duplicate work if both the listener and a direct call fire
+    routingInProgress = true;
+    try {
+      const meta = await window.__fb.getUserMeta(user.uid);
+      if (meta && meta.teamCode){
+        await enterWorkspace(meta.teamCode);
+      } else {
+        // first-time sign-in with no workspace yet (e.g. first Google sign-in) — create one silently
+        const teamCode = generateTeamCode();
+        await window.__fb.setUserMeta(user.uid, {teamCode, email: user.email, ownerUid: user.uid});
+        await window.__fb.setWorkspaceData(teamCode, {ownerUid: user.uid});
+        await enterWorkspace(teamCode);
+      }
+    } catch(e){
+      console.error(e);
+      setConnStatus('error', 'Could not load your workspace');
+    }
+    routingInProgress = false;
+  }
+
   // ---- Auth state wiring ----
   function initAuthListener(){
     window.__fbError = ()=>{ setConnStatus('error', 'Cloud connection error'); };
     window.__fbReady = ()=>{
-      window.__fbAuth.onState(async (user)=>{
-        currentUser = user;
-        if (!user){
-          if (workspaceUnsub){ workspaceUnsub(); workspaceUnsub = null; }
-          currentTeamCode = null;
-          showGate();
-          return;
-        }
-        if (!user.emailVerified){
-          showGate('verify');
-          return;
-        }
-        // verified — look up (or assign) their own private workspace
-        try {
-          const meta = await window.__fb.getUserMeta(user.uid);
-          if (meta && meta.teamCode){
-            enterWorkspace(meta.teamCode);
-          } else {
-            // first-time sign-in with no workspace yet (e.g. first Google sign-in) — create one silently
-            const teamCode = generateTeamCode();
-            await window.__fb.setUserMeta(user.uid, {teamCode, email: user.email, ownerUid: user.uid});
-            await window.__fb.setWorkspaceData(teamCode, {ownerUid: user.uid});
-            enterWorkspace(teamCode);
-          }
-        } catch(e){
-          console.error(e);
-          setConnStatus('error', 'Could not load your workspace');
-        }
+      window.__fbAuth.onState((user)=>{
+        routeAuthenticatedUser(user);
       });
     };
     if (window.__fbAuth) window.__fbReady();
@@ -611,8 +619,10 @@
         const errEl = modal.querySelector('#au_err');
         errEl.style.display = 'none';
         try {
-          await window.__fbAuth.signInWithGoogle();
-          // onAuthStateChanged picks up the result and routes to team-code gate if needed
+          const result = await window.__fbAuth.signInWithGoogle();
+          // Don't rely solely on onAuthStateChanged — route immediately too, in case
+          // the listener is slow to fire after the popup closes.
+          await routeAuthenticatedUser(result.user);
         } catch(e){
           console.error(e);
           let msg = 'Google sign-in failed. Please try again.';
@@ -644,9 +654,10 @@
             const teamCode = generateTeamCode();
             await window.__fb.setUserMeta(user.uid, {teamCode, email, ownerUid: user.uid});
             await window.__fb.setWorkspaceData(teamCode, {ownerUid: user.uid});
-            // onAuthStateChanged will pick this up and show the verify gate
+            await routeAuthenticatedUser(user); // shows the verify gate immediately
           } else {
-            await window.__fbAuth.signIn(email, pass);
+            const user = await window.__fbAuth.signIn(email, pass);
+            await routeAuthenticatedUser(user);
           }
         } catch(e){
           console.error(e);
