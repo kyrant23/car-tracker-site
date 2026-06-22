@@ -158,12 +158,12 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getFirestore, doc, getDoc, setDoc, onSnapshot
+    getFirestore, doc, getDoc, setDoc, onSnapshot, deleteDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
   import {
     getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
     sendEmailVerification, onAuthStateChanged, signOut, setPersistence,
-    browserLocalPersistence
+    browserLocalPersistence, GoogleAuthProvider, signInWithPopup
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
   const firebaseConfig = {
@@ -179,12 +179,16 @@
   const db = getFirestore(fbApp);
   const auth = getAuth(fbApp);
   setPersistence(auth, browserLocalPersistence);
+  const googleProvider = new GoogleAuthProvider();
 
   function workspaceDocRef(teamCode){
     return doc(db, "workspaces", teamCode);
   }
   function userMetaRef(uid){
     return doc(db, "userMeta", uid);
+  }
+  function inviteRef(inviteCode){
+    return doc(db, "invites", inviteCode);
   }
 
   window.__fbAuth = {
@@ -196,6 +200,11 @@
     async signIn(email, password){
       const cred = await signInWithEmailAndPassword(auth, email, password);
       return cred.user;
+    },
+    async signInWithGoogle(){
+      const cred = await signInWithPopup(auth, googleProvider);
+      const isNewUser = cred._tokenResponse && cred._tokenResponse.isNewUser;
+      return { user: cred.user, isNewUser: !!isNewUser };
     },
     async resendVerification(){
       if (auth.currentUser) await sendEmailVerification(auth.currentUser);
@@ -235,6 +244,16 @@
         console.error("Firestore listen error", err);
         window.__fbError && window.__fbError(err);
       });
+    },
+    async createInvite(inviteCode, teamCode, ownerUid){
+      await setDoc(inviteRef(inviteCode), { teamCode, ownerUid, createdAt: Date.now() });
+    },
+    async getInvite(inviteCode){
+      const snap = await getDoc(inviteRef(inviteCode));
+      return snap.exists() ? snap.data() : null;
+    },
+    async deleteInvite(inviteCode){
+      await deleteDoc(inviteRef(inviteCode));
     }
   };
   window.__fbReady && window.__fbReady();
@@ -248,6 +267,7 @@
   let taxRate = 15;
   let currentUser = null;       // Firebase Auth user object
   let currentTeamCode = null;   // which workspace doc this user belongs to
+  let currentWorkspaceOwnerUid = null;
   let fbConnected = false;
   let suppressNextSnapshot = false;
   let currentPage = 'dashboard';
@@ -309,6 +329,7 @@
     cars = data.cars || [];
     sales = data.sales || [];
     taxRate = data.taxRate !== undefined ? data.taxRate : 15;
+    currentWorkspaceOwnerUid = data.ownerUid || currentWorkspaceOwnerUid;
     cars.forEach(c=>{
       if(!c.expenses) c.expenses=[];
       if(c.regoExpiry===undefined) c.regoExpiry='';
@@ -393,7 +414,6 @@
   // ---- Auth state wiring ----
   function initAuthListener(){
     window.__fbError = ()=>{ setConnStatus('error', 'Cloud connection error'); };
-    window.__fb.onStateChanged = null; // placeholder, real listener attached below once ready
     window.__fbReady = ()=>{
       window.__fbAuth.onState(async (user)=>{
         currentUser = user;
@@ -407,16 +427,17 @@
           showGate('verify');
           return;
         }
-        // verified — look up (or assign) their team code
+        // verified — look up (or assign) their own private workspace
         try {
           const meta = await window.__fb.getUserMeta(user.uid);
           if (meta && meta.teamCode){
             enterWorkspace(meta.teamCode);
           } else {
-            // shouldn't normally happen (set at signup) but handle gracefully
-            const code = generateTeamCode();
-            await window.__fb.setUserMeta(user.uid, {teamCode: code, email: user.email});
-            enterWorkspace(code);
+            // first-time sign-in with no workspace yet (e.g. first Google sign-in) — create one silently
+            const teamCode = generateTeamCode();
+            await window.__fb.setUserMeta(user.uid, {teamCode, email: user.email, ownerUid: user.uid});
+            await window.__fb.setWorkspaceData(teamCode, {ownerUid: user.uid});
+            enterWorkspace(teamCode);
           }
         } catch(e){
           console.error(e);
@@ -436,15 +457,114 @@
   function renderUserArea(){
     const el = document.getElementById('userArea');
     if (currentUser){
+      const isOwner = currentWorkspaceOwnerUid === currentUser.uid;
       el.innerHTML = `<p style="margin:0 0 4px;">Signed in as<br><strong style="color:var(--text-primary); word-break:break-all;">${escapeHtml(currentUser.email)}</strong></p>
-        <p style="font-size:11px; color:var(--text-tertiary); margin:0 0 8px;">Team code: <strong style="color:var(--text-secondary);">${escapeHtml(currentTeamCode||'')}</strong></p>
+        ${isOwner
+          ? `<button id="inviteBtn" style="width:100%; font-size:12px; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:6px;"><i class="ti ti-user-plus" aria-hidden="true" style="font-size:14px;"></i>Invite someone</button>`
+          : `<p style="font-size:11px; color:var(--text-tertiary); margin:0 0 8px;">Viewing a shared dataset</p>`
+        }
+        <button id="joinBtn" style="width:100%; font-size:12px; margin-bottom:8px;">Join a shared workspace</button>
         <button id="logoutBtn" style="width:100%; font-size:12px;">Log out</button>`;
       document.getElementById('logoutBtn').addEventListener('click', async ()=>{
         await window.__fbAuth.signOut();
       });
+      document.getElementById('joinBtn').addEventListener('click', openJoinModal);
+      if (isOwner){
+        document.getElementById('inviteBtn').addEventListener('click', openInviteModal);
+      }
     } else {
       el.innerHTML = `<p style="font-size:12px; color:var(--text-tertiary); margin:0;">Not signed in</p>`;
     }
+  }
+
+  function openInviteModal(){
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:30;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:380px; color:var(--text-primary);">
+        <h2 style="margin:0 0 0.75rem;">Invite someone</h2>
+        <p style="font-size:13px; color:var(--text-secondary); margin:0 0 1.25rem;">Generate a one-time code. Share it with the person you want to give access to your data — they'll enter it after signing in to their own account.</p>
+        <div id="inv_content">
+          <button id="inv_generate" class="accentBtn" style="width:100%;">Generate invite code</button>
+        </div>
+        <div style="display:flex; justify-content:flex-end; margin-top:1.5rem;">
+          <button id="inv_close">Close</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#inv_close').addEventListener('click', ()=>modal.remove());
+    modal.querySelector('#inv_generate').addEventListener('click', async ()=>{
+      const btn = modal.querySelector('#inv_generate');
+      btn.disabled = true;
+      try {
+        const inviteCode = generateTeamCode();
+        await window.__fb.createInvite(inviteCode, currentTeamCode, currentUser.uid);
+        modal.querySelector('#inv_content').innerHTML = `
+          <p style="font-size:13px; color:var(--text-secondary); margin:0 0 8px;">Share this code — it can only be used once:</p>
+          <p style="font-size:28px; font-weight:600; letter-spacing:2px; text-align:center; margin:0 0 8px; padding:12px; background:var(--bg); border-radius:8px; border:1px solid var(--border);">${inviteCode}</p>
+          <button id="inv_copy" style="width:100%;">Copy code</button>
+        `;
+        modal.querySelector('#inv_copy').addEventListener('click', ()=>{
+          navigator.clipboard.writeText(inviteCode).catch(()=>{});
+          modal.querySelector('#inv_copy').textContent = 'Copied!';
+          setTimeout(()=>{ modal.querySelector('#inv_copy').textContent = 'Copy code'; }, 1500);
+        });
+      } catch(e){
+        console.error(e);
+        modal.querySelector('#inv_content').innerHTML = `<p style="font-size:13px; color:var(--red); margin:0;">Could not generate an invite code. Please try again.</p>`;
+      }
+    });
+  }
+
+  function openJoinModal(){
+    const modal = document.createElement('div');
+    modal.style.cssText = 'min-height:100vh; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; position:fixed; inset:0; padding:1rem; z-index:30;';
+    modal.innerHTML = `
+      <div class="modalPanel" style="background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:1.5rem; width:100%; max-width:380px; color:var(--text-primary);">
+        <h2 style="margin:0 0 0.75rem;">Join a shared workspace</h2>
+        <p style="font-size:13px; color:var(--text-secondary); margin:0 0 1.25rem;">Enter the invite code someone gave you. This will switch your account to view and edit their data instead of your own.</p>
+        <label style="font-size:13px; color:var(--text-secondary);">Invite code
+          <input type="text" id="jn_code" style="width:100%; margin-top:4px; text-transform:uppercase;" placeholder="e.g. AB12CD" />
+        </label>
+        <p id="jn_err" style="font-size:13px; color:var(--red); margin:0.75rem 0 0; display:none;"></p>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:1.5rem;">
+          <button id="jn_cancel">Cancel</button>
+          <button id="jn_submit" class="accentBtn">Join</button>
+        </div>
+      </div>`;
+    document.getElementById('modalRoot').appendChild(modal);
+    setupBackdropClose(modal, '.modalPanel');
+    modal.querySelector('#jn_cancel').addEventListener('click', ()=>modal.remove());
+
+    const submit = async ()=>{
+      const code = modal.querySelector('#jn_code').value.trim().toUpperCase();
+      const errEl = modal.querySelector('#jn_err');
+      errEl.style.display = 'none';
+      if (!code){ errEl.textContent='Enter an invite code.'; errEl.style.display='block'; return; }
+      const btn = modal.querySelector('#jn_submit');
+      btn.disabled = true;
+      try {
+        const invite = await window.__fb.getInvite(code);
+        if (!invite){
+          errEl.textContent = "That invite code doesn't exist or has already been used.";
+          errEl.style.display = 'block';
+          btn.disabled = false;
+          return;
+        }
+        await window.__fb.setUserMeta(currentUser.uid, {teamCode: invite.teamCode, email: currentUser.email});
+        await window.__fb.deleteInvite(code);
+        modal.remove();
+        enterWorkspace(invite.teamCode);
+      } catch(e){
+        console.error(e);
+        errEl.textContent = 'Something went wrong. Please try again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+      }
+    };
+    modal.querySelector('#jn_submit').addEventListener('click', submit);
+    modal.querySelector('#jn_code').addEventListener('keydown', (e)=>{ if(e.key==='Enter') submit(); });
   }
 
   function openAuthGate(){
@@ -466,20 +586,41 @@
             <label style="font-size:13px; color:var(--text-secondary);">Password
               <input type="password" id="au_pass" style="width:100%; margin-top:4px;" placeholder="At least 8 characters" />
             </label>
-            ${isSignup ? `
-            <label style="font-size:13px; color:var(--text-secondary);">Team code <span style="color:var(--text-tertiary);">(leave blank to start a new team)</span>
-              <input type="text" id="au_teamcode" style="width:100%; margin-top:4px; text-transform:uppercase;" placeholder="e.g. AB12CD" />
-            </label>` : ''}
             <p id="au_err" style="font-size:13px; color:var(--red); margin:0; display:none;"></p>
           </div>
           <div style="margin-top:1.5rem;">
             <button id="au_submit" class="accentBtn" style="width:100%;">${isSignup ? 'Create account' : 'Sign in'}</button>
           </div>
+          <div style="display:flex; align-items:center; gap:10px; margin:1rem 0;">
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+            <span style="font-size:12px; color:var(--text-tertiary);">or</span>
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+          </div>
+          <button id="au_google" style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34.6 6.5 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 18.9 13 24 13c3.1 0 5.8 1.1 8 3l5.7-5.7C34.6 6.5 29.6 4 24 4 16.3 4 9.6 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.5 0 10.4-2.1 14.1-5.6l-6.5-5.3C29.6 35 26.9 36 24 36c-5.3 0-9.7-3.1-11.3-7.6l-6.6 5.1C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.5 5.3C41.6 35.9 44 30.4 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+            Sign in with Google
+          </button>
           <p style="font-size:13px; color:var(--text-secondary); text-align:center; margin:1rem 0 0;">
             ${isSignup ? 'Already have an account?' : "Don't have an account?"}
             <a href="#" id="au_switch" style="color:var(--accent); text-decoration:none;">${isSignup ? 'Sign in' : 'Sign up'}</a>
           </p>
         </div>`;
+
+      modal.querySelector('#au_google').addEventListener('click', async ()=>{
+        const errEl = modal.querySelector('#au_err');
+        errEl.style.display = 'none';
+        try {
+          await window.__fbAuth.signInWithGoogle();
+          // onAuthStateChanged picks up the result and routes to team-code gate if needed
+        } catch(e){
+          console.error(e);
+          let msg = 'Google sign-in failed. Please try again.';
+          if (e.code === 'auth/popup-closed-by-user') msg = 'Sign-in window was closed before finishing.';
+          else if (e.code === 'auth/popup-blocked') msg = 'Your browser blocked the sign-in popup — please allow popups and try again.';
+          errEl.textContent = msg;
+          errEl.style.display = 'block';
+        }
+      });
 
       modal.querySelector('#au_switch').addEventListener('click', (e)=>{
         e.preventDefault();
@@ -498,10 +639,10 @@
         submitBtn.disabled = true;
         try {
           if (isSignup){
-            const enteredCode = modal.querySelector('#au_teamcode').value.trim().toUpperCase();
             const user = await window.__fbAuth.signUp(email, pass);
-            const teamCode = enteredCode || generateTeamCode();
-            await window.__fb.setUserMeta(user.uid, {teamCode, email});
+            const teamCode = generateTeamCode();
+            await window.__fb.setUserMeta(user.uid, {teamCode, email, ownerUid: user.uid});
+            await window.__fb.setWorkspaceData(teamCode, {ownerUid: user.uid});
             // onAuthStateChanged will pick this up and show the verify gate
           } else {
             await window.__fbAuth.signIn(email, pass);
